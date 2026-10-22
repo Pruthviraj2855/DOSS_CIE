@@ -1,49 +1,50 @@
+
 pipeline {
     agent any
 
-    stages {
+    options {
+        timestamps()
+    }
 
+    stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out Student Task Manager source code...'
-                checkout scm
+                echo 'Source code retrieved from GitHub'
+                bat 'git status'
             }
         }
 
-        stage('Validate Application') {
+        stage('Build') {
             steps {
-                echo 'Validating application files...'
-
-                bat 'if not exist index.html exit /b 1'
-                bat 'if not exist style.css exit /b 1'
-                bat 'if not exist script.js exit /b 1'
+                bat '''
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $source = (Get-Location).Path; $dest = Join-Path $source 'dist'; New-Item -ItemType Directory -Force -Path $dest | Out-Null; Get-ChildItem -Force $source | Where-Object { $_.Name -notin @('.git', 'dist', 'node_modules', 'deployment', 'Jenkinsfile') } | Copy-Item -Destination $dest -Recurse -Force; if (!(Test-Path (Join-Path $dest 'index.html'))) { throw 'index.html not found in repository root or copied output' }; Write-Host 'Build successful: website files copied to dist'"
+                '''
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Test') {
             steps {
-                echo 'Building Docker image...'
-
-                bat 'docker build -t student-task-manager:latest .'
+                bat '''
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; if (!(Test-Path 'dist/index.html')) { throw 'HTML entry point missing' }; $js = @(Get-ChildItem 'dist' -Recurse -Filter '*.js' -File); if ($js.Count -eq 0) { Write-Host 'No JavaScript files found; skipping JS syntax checks' } elseif (Get-Command node -ErrorAction SilentlyContinue) { foreach ($file in $js) { node --check $file.FullName; if ($LASTEXITCODE -ne 0) { throw ('JavaScript syntax check failed: ' + $file.Name) } }; Write-Host 'JavaScript syntax checks passed' } else { Write-Host 'Node.js not installed; skipping JavaScript syntax checks' }; Write-Host 'Required HTML file check passed'"
+                '''
             }
         }
 
-        stage('Verify Docker Image') {
+        stage('Deploy') {
             steps {
-                echo 'Verifying the generated Docker image...'
-
-                bat 'docker image inspect student-task-manager:latest'
+                bat '''
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $target = 'C:\\JenkinsDeploy'; New-Item -ItemType Directory -Force -Path $target | Out-Null; Get-ChildItem -Force $target | Remove-Item -Recurse -Force; Get-ChildItem -Force 'dist' | Copy-Item -Destination $target -Recurse -Force; if (!(Test-Path (Join-Path $target 'index.html'))) { throw 'Deployment verification failed: index.html missing' }; Write-Host ('Deployment successful: ' + $target)"
+                '''
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'CI/CD pipeline completed successfully'
         }
-
         failure {
-            echo 'Pipeline failed. Check the console output for details.'
+            echo 'Pipeline failed. Check Console Output for details.'
         }
     }
 }
