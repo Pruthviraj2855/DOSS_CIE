@@ -1,3 +1,2 @@
 # DOSS_CIE
- HIIII
-Jenkins Auto build check.......
+Testing automatic Jenkins CI trigger.
